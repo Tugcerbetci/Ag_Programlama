@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, lang=tr">
+    <title>3D Graf Modeli</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Times New Roman', Times, serif;
+        }
+    
+        #info-panel {
+            position: fixed;
+            right: 10px;
+            top: 10px;
+            background-color: rgba(255, 255, 255, 0.8);
+            border: 2px solid #ccc;
+            border-radius: 10px;
+            padding: 20px;
+            width: 300px;
+            max-height: 100vh;
+            overflow-y: auto;
+            font-size: 18px; 
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.17);
+            text-shadow: none;
+            color: #333;
+        }
+    </style>
+    
+    </style>
+    <script src="https://unpkg.com/3d-force-graph"></script>
+</head>
+<body>
+<div id="3d-graph"></div>
+<div id="info-panel">Detay görmek için kenarlara tiklayiniz</div>
+
+<script>
+    async function loadJSON(file) {
+        const response = await fetch(file);
+        return response.json();
+    }
+
+    function prepareGraphData(data) {
+        const nodeSet = new Set();
+        const nodeDataMap = {}; // Map to store full node information
+
+        data.forEach(item => {
+            nodeSet.add(item.KAYNAK_PROTOKOL);
+            nodeSet.add(item.HEDEF_PROTOKOL);
+            nodeSet.add(item.SALDIRI_TIPI);
+
+            nodeDataMap[item.KAYNAK_PROTOKOL] = item;
+            nodeDataMap[item.HEDEF_PROTOKOL] = item;
+            nodeDataMap[item.SALDIRI_TIPI] = item;
+        });
+
+        const nodes = [...nodeSet].map((id, idx) => ({
+            id,
+            group: idx,
+            data: nodeDataMap[id] // Include full data for display
+        }));
+
+        const links = data.map(item => [
+            {
+                source: item.KAYNAK_PROTOKOL,
+                target: item.HEDEF_PROTOKOL,
+                data: item // Bağlantının detaylarını taşır
+            },
+            {
+                source: item.HEDEF_PROTOKOL,
+                target: item.SALDIRI_TIPI,
+                data: item // Bağlantının detaylarını taşır
+            }
+        ]).flat();
+
+        return { nodes, links };
+    }
+
+    function updateInfoPanel(link) {
+        const infoPanel = document.getElementById('info-panel');
+        const details = link.data;
+
+        infoPanel.innerHTML = `
+            <strong>KENAR DETAYLARI</strong> <br/>
+            - Kaynak Protokol: ${details.KAYNAK_PROTOKOL} <br/>
+            - Hedef Protokol: ${details.HEDEF_PROTOKOL} <br/>
+            - Saldırı Tipi: ${details.SALDIRI_TIPI} <br/>
+            - İletişim Hızı: ${details.ILETISIM_HIZI} <br/>
+            - İletilen Veri Miktarı: ${details.ILETILEN_VERI_MIKTARI} <br/>
+            - Alınan Paket Sayısı: ${details.ALINAN_PAKET_SAYISI} <br/>
+            - Gönderilen Paket Sayısı: ${details.GONDERILEN_PAKET_SAYISI} <br/>
+            - Alınan Hata Paketi Sayısı: ${details.ALINAN_HATA_PAKET_SAYISI} <br/>
+            - Gönderilen Hata Paketi Sayısı: ${details.GONDERILEN_HATA_PAKET_SAYISI}
+        `;
+    }
+
+    function getNodeColor(nodeId) {
+        const colorMap = {
+            "source": "#00CED1", // Kaynak protokoller için
+            "target": "FFC0CB", // Hedef protokoller için
+            "attack": "#BA55D3"  // Saldırı tipleri için
+        };
+
+        const attackTypes = [
+            "normal.", "buffer_overflow.", "loadmodule.", "perl.", "neptune.", "smurf.",
+            "guess_passwd.", "pod.", "teardrop.", "portsweep.", "ipsweep.", "land.",
+            "ftp_write.", "back.", "imap.", "satan.", "phf.", "nmap.", "multihop.",
+            "warezmaster.", "warezclient.", "spy.", "rootkit."
+        ];
+
+        if (attackTypes.includes(nodeId)) {
+            return colorMap["attack"];
+        } else if (["tcp", "udp", "icmp"].includes(nodeId)) {
+            return colorMap["source"];
+        } else {
+            return colorMap["target"];
+        }
+    }
+
+    async function visualizeGraph() {
+        const dataset = await loadJSON('kucuk.json');
+        const graphData = prepareGraphData(dataset);
+
+        const Graph = ForceGraph3D()(document.getElementById('3d-graph'))
+      
+            .nodeLabel(node => node.id)
+            .nodeColor(node => getNodeColor(node.id))
+            .linkLabel(link => link.data.KAYNAK_PROTOKOL + " -> " + link.data.HEDEF_PROTOKOL)
+            .linkDirectionalArrowLength(7)
+            .linkDirectionalArrowRelPos(0.9)
+            .linkDirectionalArrowColor(() => '#F5F5F5')
+            .linkDirectionalParticles(7)
+            .onLinkClick(updateInfoPanel)
+            .onNodeClick(node => {
+                    updateInfoPanel(node);
+
+                    // Zoom in on the clicked node
+                    const distance = 40;
+                    const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
+
+                    const newPos = node.x || node.y || node.z
+                        ? { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio }
+                        : { x: 0, y: 0, z: distance }; // Special case if node is in (0,0,0)
+
+                    Graph.cameraPosition(
+                        newPos, // New position
+                        node,   // LookAt ({ x, y, z })
+                        3000    // ms transition duration
+                    );
+                });
+
+
+        Graph.graphData(graphData);
+    }
+
+    visualizeGraph();
+</script>
+</body>
+</html>
